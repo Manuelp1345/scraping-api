@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "node index.js"
+    "start": "node dist/index.js",
+    "build": "tsc",
+    "serve": "nodemon index.ts",
+    "type": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
@@ -16,6 +19,13 @@
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "openai": "^4.3.0",
-    "tiktoken": "^1.0.10"
+    "puppeteer": "^21.3.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-recaptcha": "^3.6.8",
+    "tiktoken": "^1.0.10",
+    "typescript": "^5.2.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.17"
   }
 }
