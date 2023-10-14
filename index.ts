@@ -2,9 +2,9 @@ import express, { Request, Response } from "express";
 import dotenv from "dotenv";
 import OpenAI from "openai";
 import cheerio from "cheerio";
-import axios from "axios";
 import { CreateChatCompletionRequestMessage } from "openai/resources/chat";
 import puppeteer from "puppeteer";
+import bodyParser from "body-parser";
 
 const app = express();
 dotenv.config();
@@ -12,6 +12,9 @@ dotenv.config();
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+app.use(bodyParser.json({ limit: "50mb" }));
+app.use(bodyParser.urlencoded({ limit: "50mb", extended: true }));
 
 const gptQuest = async (messages: CreateChatCompletionRequestMessage[]) => {
   let chatCompletion;
@@ -28,33 +31,17 @@ const gptQuest = async (messages: CreateChatCompletionRequestMessage[]) => {
   return chatCompletion.choices;
 };
 
-app.use(express.json());
-
 app.get("/", (req: Request, res: Response) => {
-  res.send("Hello World! 2");
+  res.send("Hello World! 3");
 });
 
-app.post("/scraping/product-old", async (req: Request, res: Response) => {
-  console.log(req.body);
-  const { url } = req.body;
+app.post(
+  "/extension",
 
-  if (!url) {
-    return res.send("url empty");
-  }
-  const response = await axios.get(url);
+  express.text({ type: "text/html", limit: "50mb" }),
+  async (req: Request, res: Response) => {
+    const $ = cheerio.load(req.body);
 
-  if (response.status === 200) {
-    const html = response.data;
-    //count the number of characters in the html
-
-    const $ = cheerio.load(html);
-
-    //remove form
-    $("form").remove();
-    //remove header
-    $("header").remove();
-    //remove nav
-    $("nav").remove();
     //remove footer
     $("footer").remove();
 
@@ -73,28 +60,34 @@ app.post("/scraping/product-old", async (req: Request, res: Response) => {
     //@ts-ignore
     const prices = [];
 
-    $("[class*='price']").each((i, el) => {
-      prices.push(`${el.attributes}`);
-    });
-    //@ts-ignore
+    $("[class*='price']")
+      .get()
+      .forEach((el) => {
+        prices.push($(el).text());
+      });
 
-    console.log(prices);
+    console.log($("[class*='a-price']").get());
+
+    $("[class*='a-price']")
+      .get()
+      .forEach((el) => {
+        console.log("el", el);
+        prices.push($(el).text());
+      });
+
+    //@ts-ignore
 
     const elements = `Product: ${$("[class*='product']")
       .first()
       //@ts-ignore
-      .text()}  \t ${$("h1").first().text()} \n Prices: ${prices} \t ${$(
-      "[class*='price']"
-    )
-      .last()
-      .html()} `;
+      .text()}  \t ${$("h1").first().text()} \n possible-prices: ${prices}} `;
 
     const lines = elements.split(/[\n]/);
     const datosFiltrados = lines.filter((objeto) => objeto.trim() !== "");
     const messages: CreateChatCompletionRequestMessage[] = [
       {
         role: "user",
-        content: `From the following html, provide, product name and prices ($) on JSON example { productName: string, price:string | string[]}:`,
+        content: `From the following html, provide, product name and price (only numbers after of $) on JSON example { productName: string, price:string | string[]}:`,
       },
     ];
     for (let i = 0; i < datosFiltrados.length; i++) {
@@ -119,61 +112,25 @@ app.post("/scraping/product-old", async (req: Request, res: Response) => {
       console.log(error);
       return res.sendStatus(500);
     }
-    console.log(responseGPT);
 
-    if (JSON.parse(responseGPT[0].message.content as string)) {
-      return res.send(JSON.parse(responseGPT[0].message.content as string));
-    } else {
-      return res.send({ productName: "", price: "" });
+    let responseGPT2;
+    try {
+      responseGPT2 = JSON.parse(responseGPT[0].message.content as string);
+    } catch (error) {
+      responseGPT2 = { productName: "", price: "" };
     }
-  } else {
-    console.log(
-      "Failed to retrieve the webpage. Status code:",
-      response.status
-    );
-  }
-});
-app.post("/scraping/desc-old", async (req: Request, res: Response) => {
-  const { url } = req.body;
-  const response = await axios.get(url);
 
-  if (response.status === 200) {
-    const html = response.data;
-    //count the number of characters in the html
-
-    const $ = cheerio.load(html);
-
-    //remove input tags
-    $("input").remove();
-    //remove form
-    $("form").remove();
-    //remove header
-    $("header").remove();
-    //remove nav
-    $("nav").remove();
-    //remove footer
-    $("footer").remove();
-
-    // remove all the scripts from the html
-    $("script").remove();
-
-    // delete all the comments from the html
-    $("*")
-      .contents()
-      .each(function () {
-        if (this.nodeType === 8) {
-          $(this).remove();
-        }
-      });
-
+    console.log(responseGPT2);
     const images: string[] = [];
-    $("img").each((i, el) => {
-      images.push(`${$(el).attr("alt")}: ${$(el).attr("src")} \t`);
-    });
+    $("img")
+      .get()
+      .forEach((el) => {
+        images.push(`${$(el).attr("alt")}: ${$(el).attr("src")} \t`);
+      });
 
     console.log(images);
 
-    const elements = `Product: ${$("[class*='product']")
+    const elements3 = `Product: ${$("[class*='product']")
       .first()
       .text()}  \t ${$(
       "[class*='description']"
@@ -181,41 +138,46 @@ app.post("/scraping/desc-old", async (req: Request, res: Response) => {
       "[class*='rating']"
     ).text()}   `;
 
-    const lines = elements.split(/[\n]/);
-    const datosFiltrados = lines.filter((objeto) => objeto.trim() !== "");
-    const messages: CreateChatCompletionRequestMessage[] = [
+    const lines3 = elements3.split(/[\n]/);
+    const datosFiltrados3 = lines3.filter((objeto) => objeto.trim() !== "");
+    const messages3: CreateChatCompletionRequestMessage[] = [
       {
         role: "user",
-        content: `In the following HTML, provide the product description, product image, and the total rating (optional) and average rating (optional) in the JSON example { productDescription: string, ProductImage:string, totalRating:string | null, AverageRating:string | null } only return json:`,
+        content: `In the following HTML, provide the product description, product images (images limit for array 6 and avoid thumbnail images), and the total rating (optional) and average rating (optional) in the JSON example { productDescription: string, ProductImage:string | string[], totalRating:string | null, AverageRating:string | null } only return json:`,
       },
     ];
-    for (let i = 0; i < datosFiltrados.length; i++) {
-      const line = datosFiltrados[i];
+    for (let i = 0; i < datosFiltrados3.length; i++) {
+      const line = datosFiltrados3[i];
       //if line is empty, skip
       if (line.length === 0) {
         continue;
       }
-      messages.push({
+      messages3.push({
         role: "user",
         content: line,
       });
     }
 
-    console.log(messages);
+    console.log(messages3);
 
-    let responseGPT;
+    let responseGPT3;
 
     try {
-      responseGPT = await gptQuest(messages);
+      responseGPT3 = await gptQuest(messages3);
     } catch (error) {
       console.log(error);
       return res.sendStatus(500);
     }
 
-    console.log(responseGPT);
+    console.log(responseGPT3);
 
-    if (JSON.parse(responseGPT[0].message.content as string)) {
-      return res.send(JSON.parse(responseGPT[0].message.content as string));
+    if (JSON.parse(responseGPT3[0].message.content as string)) {
+      const data = {
+        ...responseGPT2,
+        ...JSON.parse(responseGPT3[0].message.content as string),
+      };
+      console.log(data);
+      return res.send(data);
     } else {
       return res.send({
         productDescription: "",
@@ -224,13 +186,206 @@ app.post("/scraping/desc-old", async (req: Request, res: Response) => {
         AverageRating: "",
       });
     }
-  } else {
-    console.log(
-      "Failed to retrieve the webpage. Status code:",
-      response.status
-    );
   }
-});
+);
+
+// app.post("/scraping/product-old", async (req: Request, res: Response) => {
+//   console.log(req.body);
+//   const { url } = req.body;
+
+//   if (!url) {
+//     return res.send("url empty");
+//   }
+//   const response = await axios.get(url);
+
+//   if (response.status === 200) {
+//     const html = response.data;
+//     //count the number of characters in the html
+
+//     const $ = cheerio.load(html);
+
+//     //remove form
+//     $("form").remove();
+//     //remove header
+//     $("header").remove();
+//     //remove nav
+//     $("nav").remove();
+//     //remove footer
+//     $("footer").remove();
+
+//     // remove all the scripts from the html
+//     $("script").remove();
+
+//     // delete all the comments from the html
+//     $("*")
+//       .contents()
+//       .each(function () {
+//         if (this.nodeType === 8) {
+//           $(this).remove();
+//         }
+//       });
+
+//     //@ts-ignore
+//     const prices = [];
+
+//     $("[class*='price']").each((i, el) => {
+//       prices.push(`${el.attributes}`);
+//     });
+//     //@ts-ignore
+
+//     console.log(prices);
+
+//     const elements = `Product: ${$("[class*='product']")
+//       .first()
+//       //@ts-ignore
+//       .text()}  \t ${$("h1").first().text()} \n Prices: ${prices} \t ${$(
+//       "[class*='price']"
+//     )
+//       .last()
+//       .html()} `;
+
+//     const lines = elements.split(/[\n]/);
+//     const datosFiltrados = lines.filter((objeto) => objeto.trim() !== "");
+//     const messages: CreateChatCompletionRequestMessage[] = [
+//       {
+//         role: "user",
+//         content: `From the following html, provide, product name and prices ($) on JSON example { productName: string, price:string | string[]}:`,
+//       },
+//     ];
+//     for (let i = 0; i < datosFiltrados.length; i++) {
+//       const line = datosFiltrados[i];
+//       //if line is empty, skip
+//       if (line.length === 0) {
+//         continue;
+//       }
+//       messages.push({
+//         role: "user",
+//         content: line,
+//       });
+//     }
+
+//     console.log(messages);
+
+//     let responseGPT;
+
+//     try {
+//       responseGPT = await gptQuest(messages);
+//     } catch (error) {
+//       console.log(error);
+//       return res.sendStatus(500);
+//     }
+//     console.log(responseGPT);
+
+//     if (JSON.parse(responseGPT[0].message.content as string)) {
+//       return res.send(JSON.parse(responseGPT[0].message.content as string));
+//     } else {
+//       return res.send({ productName: "", price: "" });
+//     }
+//   } else {
+//     console.log(
+//       "Failed to retrieve the webpage. Status code:",
+//       response.status
+//     );
+//   }
+// });
+// app.post("/scraping/desc-old", async (req: Request, res: Response) => {
+//   const { url } = req.body;
+//   const response = await axios.get(url);
+
+//   if (response.status === 200) {
+//     const html = response.data;
+//     //count the number of characters in the html
+
+//     const $ = cheerio.load(html);
+
+//     //remove input tags
+//     $("input").remove();
+//     //remove form
+//     $("form").remove();
+//     //remove header
+//     $("header").remove();
+//     //remove nav
+//     $("nav").remove();
+//     //remove footer
+//     $("footer").remove();
+
+//     // remove all the scripts from the html
+//     $("script").remove();
+
+//     // delete all the comments from the html
+//     $("*")
+//       .contents()
+//       .each(function () {
+//         if (this.nodeType === 8) {
+//           $(this).remove();
+//         }
+//       });
+
+//     const images: string[] = [];
+//     $("img").each((i, el) => {
+//       images.push(`${$(el).attr("alt")}: ${$(el).attr("src")} \t`);
+//     });
+
+//     console.log(images);
+
+//     const elements = `Product: ${$("[class*='product']")
+//       .first()
+//       .text()}  \t ${$(
+//       "[class*='description']"
+//     ).html()} \n image: ${images} \n rating: ${$(
+//       "[class*='rating']"
+//     ).text()}   `;
+
+//     const lines = elements.split(/[\n]/);
+//     const datosFiltrados = lines.filter((objeto) => objeto.trim() !== "");
+//     const messages: CreateChatCompletionRequestMessage[] = [
+//       {
+//         role: "user",
+//         content: `In the following HTML, provide the product description, product image, and the total rating (optional) and average rating (optional) in the JSON example { productDescription: string, ProductImage:string, totalRating:string | null, AverageRating:string | null } only return json:`,
+//       },
+//     ];
+//     for (let i = 0; i < datosFiltrados.length; i++) {
+//       const line = datosFiltrados[i];
+//       //if line is empty, skip
+//       if (line.length === 0) {
+//         continue;
+//       }
+//       messages.push({
+//         role: "user",
+//         content: line,
+//       });
+//     }
+
+//     console.log(messages);
+
+//     let responseGPT;
+
+//     try {
+//       responseGPT = await gptQuest(messages);
+//     } catch (error) {
+//       console.log(error);
+//       return res.sendStatus(500);
+//     }
+
+//     console.log(responseGPT);
+
+//     if (JSON.parse(responseGPT[0].message.content as string)) {
+//       return res.send(JSON.parse(responseGPT[0].message.content as string));
+//     } else {
+//       return res.send({
+//         productDescription: "",
+//         ProductImage: "",
+//         totalRating: "",
+//         AverageRating: "",
+//       });
+//     }
+//   } else {
+//     console.log(
+//       "Failed to retrieve the webpage. Status code:",
+//       response.status
+//     );
+//   }
+// });
 
 app.post("/scraping/product", async (req: Request, res: Response) => {
   console.log(req.body);
@@ -243,11 +398,6 @@ app.post("/scraping/product", async (req: Request, res: Response) => {
     headless: "new",
   });
   const page = await browser.newPage();
-
-  //wait for page to load completely
-
-  page.setDefaultNavigationTimeout(0);
-  page.waitForNavigation();
 
   try {
     await page.goto(url);
@@ -360,9 +510,6 @@ app.post("/scraping/desc", async (req: Request, res: Response) => {
 
   //wait for page to load completely
 
-  page.setDefaultNavigationTimeout(0);
-  page.waitForNavigation();
-
   try {
     await page.goto(url);
   } catch (error) {
@@ -410,45 +557,45 @@ app.post("/scraping/desc", async (req: Request, res: Response) => {
 
   console.log(images);
 
-  const elements = `Product: ${$("[class*='product']").first().text()}  \t ${$(
+  const elements3 = `Product: ${$("[class*='product']").first().text()}  \t ${$(
     "[class*='description']"
   ).html()} \n image: ${images} \n rating: ${$("[class*='rating']").text()}   `;
 
-  const lines = elements.split(/[\n]/);
-  const datosFiltrados = lines.filter((objeto) => objeto.trim() !== "");
-  const messages: CreateChatCompletionRequestMessage[] = [
+  const lines3 = elements3.split(/[\n]/);
+  const datosFiltrados3 = lines3.filter((objeto) => objeto.trim() !== "");
+  const messages3: CreateChatCompletionRequestMessage[] = [
     {
       role: "user",
       content: `In the following HTML, provide the product description, product images (images limit for array 6 and avoid thumbnail images), and the total rating (optional) and average rating (optional) in the JSON example { productDescription: string, ProductImage:string | string[], totalRating:string | null, AverageRating:string | null } only return json:`,
     },
   ];
-  for (let i = 0; i < datosFiltrados.length; i++) {
-    const line = datosFiltrados[i];
+  for (let i = 0; i < datosFiltrados3.length; i++) {
+    const line = datosFiltrados3[i];
     //if line is empty, skip
     if (line.length === 0) {
       continue;
     }
-    messages.push({
+    messages3.push({
       role: "user",
       content: line,
     });
   }
 
-  console.log(messages);
+  console.log(messages3);
 
-  let responseGPT;
+  let responseGPT3;
 
   try {
-    responseGPT = await gptQuest(messages);
+    responseGPT3 = await gptQuest(messages3);
   } catch (error) {
     console.log(error);
     return res.sendStatus(500);
   }
 
-  console.log(responseGPT);
+  console.log(responseGPT3);
 
-  if (JSON.parse(responseGPT[0].message.content as string)) {
-    return res.send(JSON.parse(responseGPT[0].message.content as string));
+  if (JSON.parse(responseGPT3[0].message.content as string)) {
+    return res.send(JSON.parse(responseGPT3[0].message.content as string));
   } else {
     return res.send({
       productDescription: "",
