@@ -42,21 +42,6 @@ app.post(
   async (req: Request, res: Response) => {
     const $ = cheerio.load(req.body);
 
-    //remove footer
-    $("footer").remove();
-
-    // remove all the scripts from the html
-    $("script").remove();
-
-    // delete all the comments from the html
-    $("*")
-      .contents()
-      .each(function () {
-        if (this.nodeType === 8) {
-          $(this).remove();
-        }
-      });
-
     //@ts-ignore
     const prices = [];
 
@@ -102,8 +87,6 @@ app.post(
       });
     }
 
-    console.log(messages);
-
     let responseGPT;
 
     try {
@@ -120,15 +103,12 @@ app.post(
       responseGPT2 = { productName: "", price: "" };
     }
 
-    console.log(responseGPT2);
     const images: string[] = [];
     $("img")
       .get()
       .forEach((el) => {
         images.push(`${$(el).attr("alt")}: ${$(el).attr("src")} \t`);
       });
-
-    console.log(images);
 
     const elements3 = `Product: ${$("[class*='product']")
       .first()
@@ -158,8 +138,6 @@ app.post(
       });
     }
 
-    console.log(messages3);
-
     let responseGPT3;
 
     try {
@@ -168,8 +146,6 @@ app.post(
       console.log(error);
       return res.sendStatus(500);
     }
-
-    console.log(responseGPT3);
 
     if (JSON.parse(responseGPT3[0].message.content as string)) {
       const data = {
